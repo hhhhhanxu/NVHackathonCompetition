@@ -34,7 +34,7 @@ for node in graph.nodes:
             end_node = node.o().o(1).o().o()
             
             new_node = gs.Node(op='LayerNorm',name='LayerNorm_{}'.format(LayerNorm_N))
-            new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]
+            new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]  # 分别对应plugin里的
             new_node.outputs = [end_node.outputs[0]]
             print(LayerNorm_N)
             graph.nodes.append(new_node)

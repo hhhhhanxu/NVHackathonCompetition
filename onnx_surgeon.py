@@ -3,7 +3,7 @@ import onnx_graphsurgeon as gs
 
 from collections import OrderedDict
 
-onnx_file_name = 'onnx_zoo/LayerNorm_ori.onnx'
+onnx_file_name = 'onnx_zoo/hx_change_mask.onnx'
 onnx_model = onnx.load(onnx_file_name)
 graph = gs.import_onnx(onnx_model)
 
@@ -39,10 +39,11 @@ for node in graph.nodes:
             new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]  # 分别对应plugin里的gamma和beta
             new_node.outputs = [end_node.outputs[0]]
             # new_node.attrs = OrderedDict([['nHiddenDimension',96]])  # plugin的初始化参数，貌似是对应模型中的embed_dim=96
-            print(LayerNorm_N)
+            # print(LayerNorm_N)
             graph.nodes.append(new_node)
             end_node.outputs.clear()
 
-
+print('完成{}个LayerNorm节点的转换'.format(LayerNorm_N))
 graph.cleanup()
+print('新模型节点数:{}'.format(len(graph.nodes)))
 onnx.save(gs.export_onnx(graph),'test.onnx')

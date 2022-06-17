@@ -688,7 +688,6 @@ class SwinIR(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        # 怎么切分成patch了
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=embed_dim, embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None)
@@ -801,19 +800,21 @@ class SwinIR(nn.Module):
     def forward_features(self, x, mask, shift_mask):
         x_size = (x.shape[2], x.shape[3])
         x = self.patch_embed(x) # 将patch转成embed
-        if self.ape:
-            x = x + self.absolute_pos_embed
-        x = self.pos_drop(x)  # 这个也有加dropout的必要么
+        # if self.ape:
+        #     x = x + self.absolute_pos_embed
+        # x = self.pos_drop(x)  # 这个也有加dropout的必要么
 
-        for layer in self.layers:
-            x = layer(x, x_size, mask, shift_mask)
+        # for layer in self.layers:
+        #     x = layer(x, x_size, mask, shift_mask)
 
         x = self.norm(x)  # B L C
+        return x
         x = self.patch_unembed(x, x_size)
 
         return x
 
     def forward(self, x):
+        
         # 首先完成尺寸确认和对齐
         _, _, h_old, w_old = x.size()
         h_pad = (h_old // self.window_size + 1) * self.window_size - h_old
@@ -839,9 +840,9 @@ class SwinIR(nn.Module):
         elif self.upsampler == 'pixelshuffledirect':
             # for lightweight SR
             x = self.conv_first(x)   # 提取浅层权重
-            # x1 = self.forward_features(x,mask,shift_mask)
-            # return x1
-            x = self.conv_after_body(self.forward_features(x,mask,shift_mask)) + x  # forward_features 是RSTB，后面加一个卷积，然后是残差操作
+            x1 = self.forward_features(x,mask,shift_mask)
+            return x1
+            x = self.conv_after_body(x1) + x  # forward_features 是RSTB，后面加一个卷积，然后是残差操作
             x = self.upsample(x)
         elif self.upsampler == 'nearest+conv':
             # for real-world SR
@@ -909,15 +910,14 @@ if __name__ == '__main__':
                    window_size=window_size, img_range=1., depths=[6, 6, 6, 6],
                    embed_dim=60, num_heads=[6, 6, 6, 6], mlp_ratio=2, upsampler='pixelshuffledirect').cuda()
     # 加载参数
-    checkpoint = torch.load('002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth')
+    checkpoint = torch.load('SwinIR/model_zoo/002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth')
     param_key_g = 'params'
 
     model.load_state_dict(checkpoint[param_key_g] if param_key_g in checkpoint.keys() else checkpoint)
 
-    print(model)
-    print(height, width, model.flops() / 1e9)
 
     x = torch.ones((1, 3, height, width)).cuda()
     x = model(x)
+    print('-------------')
     print(x)
     print(x.shape)

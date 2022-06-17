@@ -1,8 +1,4 @@
 trtexec \
-    --onnx=onnx_zoo/hxmask.onnx\
-    --workspace=20480 \
-    --saveEngine=model-FP32.plan \
-    --shapes=imgs:1x3x256x256  \
-    --useSpinWait \
-    --verbose \
-    > hx.txt
+    --loadEngine=./LayerNorm_surgeonv1.plan \
+    --plugins=./plugin/LayerNorm/LayerNormPlugin.so \
+    --shapes=imgs:1x3x256x256 \

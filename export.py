@@ -42,7 +42,7 @@ torch.onnx.export(model = model,args = (x),f=onnx_file_name,
                     'imgs':{0: 'batch', 2: 'height', 3: 'width'},
                     'outputs':{0: 'batch', 2: 'height', 3: 'width'}
                 })
-
+# 大概吃9个G
 model = onnx.load(onnx_file_name)
 graph = gs.import_onnx(model)
 

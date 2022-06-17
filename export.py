@@ -28,7 +28,7 @@ C = 3
 W = 32 * window_size 
 H = 32 * window_size 
 
-onnx_version = "hx_change_mask"
+onnx_version = "LayerNorm_ori"
 onnx_file_name = './onnx_zoo/{}.onnx'.format(onnx_version)
 
 x = torch.randn((N,C,W,H), requires_grad=False).cuda()

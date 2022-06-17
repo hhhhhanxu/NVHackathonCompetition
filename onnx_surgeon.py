@@ -1,6 +1,8 @@
 import onnx
 import onnx_graphsurgeon as gs
 
+from collections import OrderedDict
+
 onnx_file_name = 'onnx_zoo/LayerNorm_ori.onnx'
 onnx_model = onnx.load(onnx_file_name)
 graph = gs.import_onnx(onnx_model)
@@ -34,8 +36,9 @@ for node in graph.nodes:
             end_node = node.o().o(1).o().o()
             
             new_node = gs.Node(op='LayerNorm',name='LayerNorm_{}'.format(LayerNorm_N))
-            new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]  # 分别对应plugin里的
+            new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]  # 分别对应plugin里的gamma和beta
             new_node.outputs = [end_node.outputs[0]]
+            # new_node.attrs = OrderedDict([['nHiddenDimension',96]])  # plugin的初始化参数，貌似是对应模型中的embed_dim=96
             print(LayerNorm_N)
             graph.nodes.append(new_node)
             end_node.outputs.clear()
@@ -43,5 +46,3 @@ for node in graph.nodes:
 
 graph.cleanup()
 onnx.save(gs.export_onnx(graph),'test.onnx')
-
-            

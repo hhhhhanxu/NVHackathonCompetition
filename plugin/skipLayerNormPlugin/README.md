@@ -1,5 +1,5 @@
 # skipLayerNormPlugin
-from NVIDIA
+from NVIDIA \
 **Table Of Contents**
 - [Description](#description)
     * [Structure](#structure)

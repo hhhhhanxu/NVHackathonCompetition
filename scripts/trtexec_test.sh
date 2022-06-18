@@ -1,4 +1,4 @@
 trtexec \
-    --loadEngine=./LayerNorm_surgeonv1.plan \
-    --plugins=./plugin/LayerNorm/LayerNormPlugin.so \
-    --shapes=imgs:1x3x256x256 \
+    --loadEngine=./mask.plan \
+    --plugins=./plugin/WindowsMaskPlugin.so \
+    --shapes=imgs:16x3x256x256 \

@@ -1,2 +1,2 @@
 # NVHackathonCompetition
-Nvidia Tensor模型加速推理优化赛2022
+Nvidia TensorRT模型加速推理优化赛2022

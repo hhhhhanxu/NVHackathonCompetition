@@ -231,10 +231,10 @@ namespace nvinfer1
                             if (parameterMap.find(fc->fields[i].name) != parameterMap.end())
                             {
                                 printf("i got it !");
-                                *parameterMap[fc->fields[i].name] = *reinterpret_cast<const int *>(fc->fields[i].data);
+                                *parameterMap[fc->fields[i].name] = *(int *)(fc->fields[i].data);
                             }
                         }
-                        return new WindowsMaskPlugin(name,win_size,s_size);
+                        return new WindowsMaskPlugin(name, *parameterMap["window_size"],*parameterMap["shift_size"]);
                 }
 
         IPluginV2 *deserializePlugin(const char* name, const void* serialData, size_t serialLength) noexcept override

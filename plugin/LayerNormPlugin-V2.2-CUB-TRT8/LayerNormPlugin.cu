@@ -494,10 +494,10 @@ IPluginV2 *LayerNormPluginCreator::createPlugin(const char *name, const PluginFi
     {
         if (parameterMap.find(fc->fields[i].name) != parameterMap.end())
         {
-            *parameterMap[fc->fields[i].name] = *reinterpret_cast<const int *>(fc->fields[i].data);
+            *parameterMap[fc->fields[i].name] = *(int *)(fc->fields[i].data);
         }
     }
-    return new LayerNormPlugin(name, nHiddenDimension);
+    return new LayerNormPlugin(name, *parameterMap["nHiddenDimension"]);
 }
 
 IPluginV2 *LayerNormPluginCreator::deserializePlugin(const char *name, const void *serialData, size_t serialLength) noexcept

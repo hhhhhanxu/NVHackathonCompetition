@@ -1,5 +1,6 @@
 import onnx
 import onnx_graphsurgeon as gs
+import numpy as np
 
 from collections import OrderedDict
 
@@ -38,7 +39,13 @@ for node in graph.nodes:
             new_node = gs.Node(op='LayerNorm',name='LayerNorm_{}'.format(LayerNorm_N))
             new_node.inputs = [node.inputs[0],mul_node.inputs[1],add_node.inputs[1]]  # 分别对应plugin里的gamma和beta
             new_node.outputs = [end_node.outputs[0]]
-            new_node.attrs = OrderedDict([['nHiddenDimension',96]])  # plugin的初始化参数，貌似是对应模型中的embed_dim=96
+            # new_node.attrs = OrderedDict([['nHiddenDimension',96]])  # 这个写法貌似有点问题
+            new_node.attrs = OrderedDict(
+                                nHiddenDimension = np.array([60],dtype=np.int32), # plugin的初始化参数，是对应模型中的embed_dim=60
+                                plugin_version = "1",
+                                plugin_namespace = ""
+            )
+
             # print(LayerNorm_N)
             graph.nodes.append(new_node)
             end_node.outputs.clear()

@@ -30,10 +30,13 @@ def surgeon(onnx_path):
         img_mask = ConstantOfShapeNode.outputs[0]
         img_mask_shape = ShapeNode.outputs[0]
         WindowsMaskN = gs.Node("WindowsMask", "WindowsMask_" + str(nWindowsMask), inputs=[img_mask, img_mask_shape], outputs=[ScatterNDNode.outputs[0]])
-        WindowsMaskN.attrs = OrderedDict([
-            ["window_size",8],
-            ["shift_size",4],
-        ])
+
+        WindowsMaskN.attrs = OrderedDict(
+            window_size = np.array([8],dtype=np.int32),
+            shift_size = np.array([4],dtype=np.int32),
+            plugin_version = "1",
+            plugin_namespace = ""
+        )
 
         graph.nodes.append(WindowsMaskN)
         nWindowsMask += 1
@@ -56,10 +59,12 @@ def surgeon(onnx_path):
         img_mask_shape = ShapeNode.outputs[0]
 
         WindowsMaskN = gs.Node("WindowsMask", "WindowsMask_" + str(nWindowsMask), inputs=[img_mask, img_mask_shape], outputs=[ScatterNDNode.outputs[0]])
-        WindowsMaskN.attrs = OrderedDict([
-            ["window_size",8],
-            ["shift_size",0],
-        ])
+        WindowsMaskN.attrs = OrderedDict(
+            window_size = np.array([8],dtype=np.int32),
+            shift_size = np.array([0],dtype=np.int32),
+            plugin_version = "1",
+            plugin_namespace = ""
+        )
         graph.nodes.append(WindowsMaskN)
         nWindowsMask += 1
         ScatterNDNode.outputs.clear()

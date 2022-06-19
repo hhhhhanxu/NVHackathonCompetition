@@ -462,6 +462,8 @@ std::vector<PluginField> LayerNormPluginCreator::attr_;
 
 LayerNormPluginCreator::LayerNormPluginCreator()
 {
+    attr_.clear();
+    attr_.emplace_back(PluginField("nHiddenDimension",nullptr,PluginFieldType::kINT32,1));
     WHERE_AM_I();
     fc_.nbFields = attr_.size();
     fc_.fields   = attr_.data();

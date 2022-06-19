@@ -209,6 +209,9 @@ namespace nvinfer1
     public:
         WindowsMaskPluginCreator()
         {
+                attr_.clear();
+                attr_.emplace_back(PluginField("window_size",nullptr,PluginFieldType::kINT32,1));
+                attr_.emplace_back(PluginField("shift_size",nullptr,PluginFieldType::kINT32,1));
                 WHERE_AM_I();
             fc_.nbFields = attr_.size();
             fc_.fields = attr_.data();

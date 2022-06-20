@@ -6,7 +6,7 @@ import ctypes
 
 def onnx2trt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--onnxFile", type=str, default="onnx_zoo/LayerNorm_surgeonv1.onnx",
+    parser.add_argument("--onnxFile", type=str, default="./onnx_zoo/calculate_mask_head_surgeon.onnx",
                         help="onnx file path.")
     parser.add_argument("--trtFile", type=str, default=None,
                         help="onnx file path.")
@@ -21,9 +21,9 @@ def onnx2trt():
     print(f"trtFile: {trtFile}")
     
     # 获取plugin列表
-    PluginPath   = "/root/hx/NVHackathonCompetition/plugin/LayerNorm/"
-    soFileList = glob(PluginPath + "*.so")
-    print(soFileList)
+    PluginPath   = "/root/hx/NVHackathonCompetition/plugin/"
+    soFileList = glob(PluginPath + "*/*.so")
+    print("加载plugin:",soFileList)
     # 加载plugin
     logger = trt.Logger(trt.Logger.WARNING)
     trt.init_libnvinfer_plugins(logger, '')
@@ -37,6 +37,8 @@ def onnx2trt():
     parser.parse_from_file(onnxFile)  #
     config = builder.create_builder_config()
     config.max_workspace_size = 12 << 30  # 12G
+    
+    config.flags = 1 << int(trt.BuilderFlag.FP16) # 开启FP16？
 
     profile = builder.create_optimization_profile()
     print("==== inputs name:")

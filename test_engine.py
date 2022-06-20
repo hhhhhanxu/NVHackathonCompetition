@@ -1,4 +1,5 @@
 # copy from ljh
+from ast import arg
 import onnx
 import onnx_graphsurgeon as gs
 
@@ -14,6 +15,8 @@ from cuda import cudart
 import tensorrt as trt
 from collections import OrderedDict
 import cv2
+
+from utils.print_color_txt import colorstr
 
 def reorder_image(img, input_order='HWC'):
     """Reorder images to 'HWC' order.
@@ -282,19 +285,23 @@ def testTRT():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnxFile", type=str, default=None,
                         help="onnx file path.")
-    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/swinir_lightweight_sr_x2/002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2_surgeon.plan",
+    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/calculate_mask_head.plan",
                         help="onnx file path.")
     args = parser.parse_args()
 
+    if args.onnxFile is None:
+        if os.path.exists(args.TRTFile.replace('plan','onnx')):
+            args.onnxFile = args.TRTFile.replace('plan','onnx')
     if args.onnxFile is not None:
         graph = gs.import_onnx(onnx.load(args.onnxFile))
-        print("graph nodes: ", len(graph.nodes))
+        print(colorstr("graph nodes: "), len(graph.nodes))
 
     folder_lq = "./SwinIR/testsets/Set5/LR_bicubic/X2"
     folder_gt = "./SwinIR/testsets/Set5/HR"
     plan_file = args.TRTFile
-    plugin_path = "plugin/"
-    soFileList = glob(plugin_path + "*.so")
+    plugin_path = "./plugin/"
+    # 这里看怎么写一下
+    soFileList = glob(plugin_path + "*/*.so")
     task = "lightweight_sr"
     scale = 2
     window_size = 8
@@ -335,7 +342,9 @@ def testTRT():
         exit()
     nInput = np.sum([ engine.binding_is_input(i) for i in range(engine.num_bindings) ])
     nOutput = engine.num_bindings - nInput
+    print(colorstr("输入输出数量:")+"input-{},output-{}".format(nInput,nOutput))
     context = engine.create_execution_context()
+
     #-------------------------------------------------------------------------------
 
     test_results = OrderedDict()

@@ -285,7 +285,7 @@ def testTRT():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnxFile", type=str, default=None,
                         help="onnx file path.")
-    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/calculate_mask_head_surgeon.plan",
+    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/calculate_mask_surgeon_1.plan",
                         help="onnx file path.")
     args = parser.parse_args()
 
@@ -371,7 +371,8 @@ def testTRT():
         context.set_binding_shape(0, img_lq.shape)
 
         bufferH = []
-        bufferH.append( img_lq.astype(np.float16).reshape(-1) )
+        bufferH.append( img_lq.astype(np.float32).reshape(-1) )
+        # print(trt.nptype(engine.get_binding_dtype(0)))
 
         for i in range(nInput, nInput + nOutput):                
             bufferH.append( np.empty(context.get_binding_shape(i), dtype=trt.nptype(engine.get_binding_dtype(i))) )
@@ -398,7 +399,7 @@ def testTRT():
         for i in range(30):
             context.execute_v2(bufferD)
         t1 = time_ns()
-        timePerInference = (t1-t0)/1000/1000/30
+        timePerInference = (t1-t0)/1000/1000/30 # 单位是秒
 
         index_output = engine.get_binding_index("shift_mask")
         print(index_output)
@@ -409,6 +410,9 @@ def testTRT():
         # check_res = check(output, gt_output, True)
 
         def check_mask(output):
+            '''
+            这个只用来检测是否能正确的生成012345678 index的mask
+            '''
             print(colorstr('第一大行'))
             print(output[0][0][0])
             print(output[0][0][-5])
@@ -422,7 +426,9 @@ def testTRT():
             print(output[0][-1][-5])
             print(output[0][-1][-1])
 
-        check_mask(output)
+        # check_mask(output)
+        print(output)
+        
         print(timePerInference)
         assert 0
         # string = "%4d,%4d,%8.3f,%9.3e,%9.3e"%(h_old, w_old, timePerInference, check_res[1], check_res[2])

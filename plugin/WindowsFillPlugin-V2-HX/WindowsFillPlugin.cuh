@@ -19,7 +19,7 @@
 // +------- Plguin ---------------------------------------------------------------------------------
 namespace
 {
-    static const char* PLUGIN_NAME{"Fill"};
+    static const char* PLUGIN_NAME{"WindowsFill"};
     static const char* PLUGIN_VERSION{"1"};
 } // namespace
 

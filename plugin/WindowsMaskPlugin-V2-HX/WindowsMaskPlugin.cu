@@ -78,14 +78,14 @@ int32_t WindowsMaskPlugin::enqueue(const PluginTensorDesc* inputDesc, const Plug
         const auto input = static_cast<const float *>(inputs[0]);
         const auto shape = static_cast<const int *>(inputs[1]);
         auto output = static_cast<float *>(outputs[0]);
-
+        printf(" Using FP 32!!!\n");
         (windowsMaskKernel<float>)<<<grid,block,0,stream>>>(input,shape,output,nElement,m_.window_size,m_.shift_size);
     }
     else if(inputDesc[0].type==DataType::kHALF){
         const auto input = static_cast<const half *>(inputs[0]);
         const auto shape = static_cast<const int *>(inputs[1]);
         auto output = static_cast<half *>(outputs[0]);
-        printf(" Using FP 16 !!!\n");
+        printf(" Using FP 16!!!\n");
         (windowsMaskKernel<__half>)<<<grid,block,0,stream>>>(input,shape,output,nElement,m_.window_size,m_.shift_size);
     }
     else{

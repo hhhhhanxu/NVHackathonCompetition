@@ -4,11 +4,15 @@ import numpy as np
 
 from collections import OrderedDict
 
-onnx_file_name = 'onnx_zoo/for_layernorm.onnx'
+import sys
+sys.path.append('/root/hx/NVHackathonCompetition/')
+from utils.print_color_txt import colorstr
+
+onnx_file_name = 'onnx_zoo/SwinIR.onnx'
 onnx_model = onnx.load(onnx_file_name)
 graph = gs.import_onnx(onnx_model)
 
-print('load model {}, the nodes number is {}'.format(onnx_file_name,len(graph.nodes)))
+print(colorstr('加载模型:')+onnx_file_name,"节点数量:",colorstr('red',str(len(graph.nodes))))
 
 # ------------------------------------------------------------
 # 替换掉LN节点
@@ -50,7 +54,8 @@ for node in graph.nodes:
             graph.nodes.append(new_node)
             end_node.outputs.clear()
 
-print('完成{}个LayerNorm节点的转换'.format(LayerNorm_N))
+print('完成'+colorstr('red',str(LayerNorm_N))+'个LayerNorm节点的转换')
 graph.cleanup()
-print('新模型节点数:{}'.format(len(graph.nodes)))
-onnx.save(gs.export_onnx(graph),'test.onnx')
+print(colorstr('新模型节点数:'),colorstr('red',str(len(graph.nodes))) )
+output_name =  onnx_file_name.split('.')[0]+'_LN.onnx'
+onnx.save(gs.export_onnx(graph),output_name)

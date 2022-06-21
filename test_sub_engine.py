@@ -285,7 +285,7 @@ def testTRT():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnxFile", type=str, default=None,
                         help="onnx file path.")
-    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/calculate_mask_surgeon_1.plan",
+    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/for_layernorm_jh.plan",
                         help="onnx file path.")
     args = parser.parse_args()
 
@@ -357,6 +357,7 @@ def testTRT():
 
     for idx, path in enumerate(sorted(glob(os.path.join(folder_gt, '*.png')))):
         imgname, img_lq, img_gt = get_image_pair(task, path)  # image to HWC-BGR, float32
+        print(colorstr('img name:')+imgname)
         img_lq = np.transpose(img_lq if img_lq.shape[2] == 1 else img_lq[:, :, [2, 1, 0]], (2, 0, 1))  # HCW-BGR to CHW-RGB
         img_lq = img_lq[np.newaxis, :, :, :]
 
@@ -428,7 +429,7 @@ def testTRT():
 
         # check_mask(output)
         print(output)
-        
+        np.save(args.TRTFile.split('/')[-1].split('.')[0],output)
         print(timePerInference)
         assert 0
         # string = "%4d,%4d,%8.3f,%9.3e,%9.3e"%(h_old, w_old, timePerInference, check_res[1], check_res[2])

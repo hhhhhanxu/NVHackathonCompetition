@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
- 
-#include <vector>
-#include <string>
 #include <NvInfer.h>
+#include <cub/cub.cuh>
 #include <cuda_fp16.h>
+#include <string>
+#include <vector>
 
 // +------- Debug wrapper --------------------------------------------------------------------------
 #if DEBUG
@@ -32,7 +32,7 @@
 // +------- Plguin ---------------------------------------------------------------------------------
 namespace
 {
-static const char* PLUGIN_NAME{"ReshapeIn2"};
+static const char* PLUGIN_NAME{"STReshapeRoll"};
 static const char* PLUGIN_VERSION{"1"};
 } // namespace
 
@@ -40,26 +40,35 @@ namespace nvinfer1
 {
 
 // +------- Plugin body ----------------------------------------------------------------------------
-class ReshapeIn2Plugin: public IPluginV2DynamicExt
+class STReshapeRollPlugin: public IPluginV2DynamicExt
 {
 private:    
     std::string name_;
     std::string namespace_;
+    struct{
+        int shift_;
+        int window_size_;
+        int type_;
+    }m;
 
 public:
-    ReshapeIn2Plugin(const std::string& name) : name_(name)
+    STReshapeRollPlugin(const std::string& name, int shift, int window_size, int type) : name_(name)
     {
+        m.shift_ = shift;
+        m.window_size_ = window_size;
+        m.type_ = type;
         WHERE_AM_I();
     }
 
-    ReshapeIn2Plugin(const std::string& name, const void* data, size_t length) : name_(name)
+    STReshapeRollPlugin(const std::string& name, const void* data, size_t length) : name_(name)
     {
         WHERE_AM_I();
+        memcpy(&m, data, sizeof(m));
     }
     
-    ReshapeIn2Plugin() = delete;
+    STReshapeRollPlugin() = delete;
 
-    ~ReshapeIn2Plugin()
+    ~STReshapeRollPlugin()
     {
         WHERE_AM_I();
     }
@@ -67,18 +76,19 @@ public:
     size_t getSerializationSize() const noexcept override
     {
         WHERE_AM_I();
-        return 0;
+        return sizeof(m);
     }
     
     void serialize(void *buffer) const noexcept override
     {
         WHERE_AM_I();
+        memcpy(buffer, &m, sizeof(m));
     }
   
     IPluginV2DynamicExt* clone() const noexcept override
     {
         WHERE_AM_I();
-        return new ReshapeIn2Plugin(name_);
+        return new STReshapeRollPlugin(name_, m.shift_, m.window_size_, m.type_);
     }
 
     int getNbOutputs() const noexcept override
@@ -90,7 +100,26 @@ public:
     DimsExprs getOutputDimensions(int32_t outputIndex, const DimsExprs* inputs, int32_t nbInputs, IExprBuilder& exprBuilder) noexcept override
     {
         WHERE_AM_I();
-        return inputs[1];
+        DimsExprs out;
+        const auto* ws = exprBuilder.constant(m.window_size_);
+        // B, H, W, C without shift
+        if (m.type_ == 0){
+            out.nbDims = 6;
+            out.d[0]   = inputs[1].d[0];
+            out.d[1]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[2], *ws);
+            out.d[2]   = exprBuilder.constant(m.window_size_);
+            out.d[3]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[3], *ws);
+            out.d[4]   = exprBuilder.constant(m.window_size_);
+            out.d[5]   = inputs[1].d[1];
+        }
+        // B, H*W, C without shift
+        else if (m.type_ == 1){
+            out.nbDims = 3;
+            out.d[0]   = inputs[1].d[0];
+            out.d[1]   = inputs[1].d[1];
+            out.d[2]   = inputs[1].d[2];
+        }
+        return out;
     }
 
     bool supportsFormatCombination(int32_t pos, const PluginTensorDesc* inOut, int32_t nbInputs, int32_t nbOutputs) noexcept override
@@ -170,9 +199,9 @@ public:
     }
     
     int32_t enqueue(const PluginTensorDesc* inputDesc, const PluginTensorDesc* outputDesc, const void* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept override;
-}; // class ReshapeIn2Plugin
+}; // class STReshapeRollPlugin
 
-class ReshapeIn2PluginCreator : public IPluginCreator
+class STReshapeRollPluginCreator : public IPluginCreator
 {
 private:
     static PluginFieldCollection fc_;
@@ -180,23 +209,45 @@ private:
     std::string namespace_;
 
 public:
-    ReshapeIn2PluginCreator()
+    STReshapeRollPluginCreator()
     {
+        attr_.emplace_back(PluginField("shift", nullptr, PluginFieldType::kINT32, 1));
+        attr_.emplace_back(PluginField("window_size", nullptr, PluginFieldType::kINT32, 1));
+        attr_.emplace_back(PluginField("type", nullptr, PluginFieldType::kINT32, 1));
         fc_.nbFields = attr_.size();
-        fc_.fields = attr_.data();
+        fc_.fields   = attr_.data();
     }
 
-    ~ReshapeIn2PluginCreator() {}
+    ~STReshapeRollPluginCreator() {}
 
     IPluginV2* createPlugin(const char* name, const PluginFieldCollection* fc) noexcept override
     {
         WHERE_AM_I();
-        return new ReshapeIn2Plugin(name);
+        int shift {-4};
+        int window_size {8};
+        int type {0};
+        for (int i = 0; i < fc->nbFields; i++)
+        {
+            std::string field_name(fc->fields[i].name);
+            if (field_name.compare("shift") == 0)
+            {
+                shift = *static_cast<const int *>(fc->fields[i].data);
+            }
+            if (field_name.compare("window_size") == 0)
+            {
+                window_size = *static_cast<const int *>(fc->fields[i].data);
+            }
+            if (field_name.compare("type") == 0)
+            {
+                type = *static_cast<const int *>(fc->fields[i].data);
+            }
+        }
+        return new STReshapeRollPlugin(name, shift, window_size, type);
     }
 
     IPluginV2* deserializePlugin(const char* name, const void* serialData, size_t serialLength) noexcept override
     {
-        return new ReshapeIn2Plugin(name, serialData, serialLength);
+        return new STReshapeRollPlugin(name, serialData, serialLength);
     }
 
     void setPluginNamespace(const char* szNamespace) noexcept override
@@ -223,7 +274,7 @@ public:
     {
         return &fc_;
     }
-}; // class ReshapeIn2PluginCreator
+}; // class STReshapeRollPluginCreator
 
 } // namespace nvinfer1
 

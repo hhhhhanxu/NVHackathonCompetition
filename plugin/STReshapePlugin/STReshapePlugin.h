@@ -32,7 +32,7 @@
 // +------- Plguin ---------------------------------------------------------------------------------
 namespace
 {
-static const char* PLUGIN_NAME{"Roll"};
+static const char* PLUGIN_NAME{"STReshape"};
 static const char* PLUGIN_VERSION{"1"};
 } // namespace
 
@@ -40,33 +40,34 @@ namespace nvinfer1
 {
 
 // +------- Plugin body ----------------------------------------------------------------------------
-class RollPlugin: public IPluginV2DynamicExt
+class STReshapePlugin: public IPluginV2DynamicExt
 {
 private:    
     std::string name_;
     std::string namespace_;
     struct{
-        int shift_;
-        int direction_;
+        int window_size_;
+        int type_;
     }m;
+    
 
 public:
-    RollPlugin(const std::string& name, int shift, int direction) : name_(name)
+    STReshapePlugin(const std::string& name, int window_size, int type) : name_(name)
     {
-        m.shift_ = shift;
-        m.direction_ = direction;
+        m.window_size_ = window_size;
+        m.type_ = type;
         WHERE_AM_I();
     }
 
-    RollPlugin(const std::string& name, const void* data, size_t length) : name_(name)
+    STReshapePlugin(const std::string& name, const void* data, size_t length) : name_(name)
     {
         WHERE_AM_I();
         memcpy(&m, data, sizeof(m));
     }
     
-    RollPlugin() = delete;
+    STReshapePlugin() = delete;
 
-    ~RollPlugin()
+    ~STReshapePlugin()
     {
         WHERE_AM_I();
     }
@@ -86,7 +87,7 @@ public:
     IPluginV2DynamicExt* clone() const noexcept override
     {
         WHERE_AM_I();
-        return new RollPlugin(name_, m.shift_, m.direction_);
+        return new STReshapePlugin(name_, m.window_size_, m.type_);
     }
 
     int getNbOutputs() const noexcept override
@@ -98,7 +99,49 @@ public:
     DimsExprs getOutputDimensions(int32_t outputIndex, const DimsExprs* inputs, int32_t nbInputs, IExprBuilder& exprBuilder) noexcept override
     {
         WHERE_AM_I();
-        return inputs[0];
+        DimsExprs out;
+        const auto* ws = exprBuilder.constant(m.window_size_);
+        const auto* wspow2 = exprBuilder.constant(m.window_size_*m.window_size_);
+        
+        // B, H, W, C without shift
+        if (m.type_ == 0){
+            out.nbDims = 6;
+            out.d[0]   = inputs[1].d[0];
+            out.d[1]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[2], *ws);
+            out.d[2]   = exprBuilder.constant(m.window_size_);
+            out.d[3]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[3], *ws);
+            out.d[4]   = exprBuilder.constant(m.window_size_);
+            out.d[5]   = inputs[1].d[1];
+        }
+        // B, H*W, C without shift
+        else if (m.type_ == 1){
+            out.nbDims = 3;
+            out.d[0]   = inputs[1].d[0];
+            out.d[1]   = inputs[1].d[1];
+            out.d[2]   = inputs[1].d[2];
+        }
+        // -1, window_size*window_size, C
+        if (m.type_ == 2){
+            out.nbDims = 3;
+            const auto* tmp = exprBuilder.operation(DimensionOperation::kPROD, *inputs[1].d[0], *inputs[1].d[1]);
+            out.d[0]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *tmp, *wspow2);
+            out.d[1]   = exprBuilder.constant(m.window_size_*m.window_size_);
+            out.d[2]   = inputs[1].d[2];
+        }
+        // B, H // window_szie, W // window_size, window_size, window_size, C
+        else if (m.type_ == 3){
+            out.nbDims = 6;
+            out.d[0]   = inputs[1].d[0];
+            out.d[1]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[2], *ws);
+            out.d[2]   = exprBuilder.operation(DimensionOperation::kFLOOR_DIV, *inputs[1].d[3], *ws);
+            out.d[3]   = exprBuilder.constant(m.window_size_);
+            out.d[4]   = exprBuilder.constant(m.window_size_);
+            out.d[5]   = inputs[1].d[1];
+        }
+        else if (m.type_ == 4){
+            return inputs[1];
+        }
+        return out;
     }
 
     bool supportsFormatCombination(int32_t pos, const PluginTensorDesc* inOut, int32_t nbInputs, int32_t nbOutputs) noexcept override
@@ -115,6 +158,8 @@ public:
         case 0:
             res = (inOut[pos].type == DataType::kFLOAT); break;
         case 1:
+            res = (inOut[pos].type == DataType::kFLOAT); break;
+        case 2:
             res = (inOut[pos].type == DataType::kFLOAT); break;
         default:// should NOT be here
             res = false;
@@ -176,9 +221,9 @@ public:
     }
     
     int32_t enqueue(const PluginTensorDesc* inputDesc, const PluginTensorDesc* outputDesc, const void* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept override;
-}; // class RollPlugin
+}; // class STReshapePlugin
 
-class RollPluginCreator : public IPluginCreator
+class STReshapePluginCreator : public IPluginCreator
 {
 private:
     static PluginFieldCollection fc_;
@@ -186,39 +231,39 @@ private:
     std::string namespace_;
 
 public:
-    RollPluginCreator()
+    STReshapePluginCreator()
     {
-        attr_.emplace_back(PluginField("shift", nullptr, PluginFieldType::kINT32, 1));
-        attr_.emplace_back(PluginField("direction", nullptr, PluginFieldType::kINT32, 1));
+        attr_.emplace_back(PluginField("window_size", nullptr, PluginFieldType::kINT32, 1));
+        attr_.emplace_back(PluginField("type", nullptr, PluginFieldType::kINT32, 1));
         fc_.nbFields = attr_.size();
         fc_.fields   = attr_.data();
     }
 
-    ~RollPluginCreator() {}
+    ~STReshapePluginCreator() {}
 
     IPluginV2* createPlugin(const char* name, const PluginFieldCollection* fc) noexcept override
     {
         WHERE_AM_I();
-        int shift {-4};
-        int direction {1};
+        int window_size {8};
+        int type {0};
         for (int i = 0; i < fc->nbFields; i++)
         {
             std::string field_name(fc->fields[i].name);
-            if (field_name.compare("shift") == 0)
+            if (field_name.compare("window_size") == 0)
             {
-                shift = *static_cast<const int *>(fc->fields[i].data);
+                window_size = *static_cast<const int *>(fc->fields[i].data);
             }
-            if (field_name.compare("direction") == 0)
+            if (field_name.compare("type") == 0)
             {
-                direction = *static_cast<const int *>(fc->fields[i].data);
+                type = *static_cast<const int *>(fc->fields[i].data);
             }
         }
-        return new RollPlugin(name, shift, direction);
+        return new STReshapePlugin(name, window_size, type);
     }
 
     IPluginV2* deserializePlugin(const char* name, const void* serialData, size_t serialLength) noexcept override
     {
-        return new RollPlugin(name, serialData, serialLength);
+        return new STReshapePlugin(name, serialData, serialLength);
     }
 
     void setPluginNamespace(const char* szNamespace) noexcept override
@@ -245,7 +290,7 @@ public:
     {
         return &fc_;
     }
-}; // class RollPluginCreator
+}; // class STReshapePluginCreator
 
 } // namespace nvinfer1
 

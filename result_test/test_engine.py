@@ -16,6 +16,7 @@ import tensorrt as trt
 from collections import OrderedDict
 import cv2
 
+sys.path.append('/root/hx/NVHackathonCompetition/')
 from utils.print_color_txt import colorstr
 
 def reorder_image(img, input_order='HWC'):
@@ -285,7 +286,7 @@ def testTRT():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnxFile", type=str, default=None,
                         help="onnx file path.")
-    parser.add_argument("--TRTFile", type=str, default="./onnx_zoo/calculate_mask_head.plan",
+    parser.add_argument("--TRTFile", type=str, default="./SwinIR.plan",
                         help="onnx file path.")
     args = parser.parse_args()
 

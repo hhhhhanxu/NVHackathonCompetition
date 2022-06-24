@@ -11,6 +11,8 @@ class test_gelu(nn.Module):
 
     def forward(self,x):
         x = self.act_layer(x)
+        x = self.act_layer(x)
+        x = self.act_layer(x)
         return x
     
 
@@ -38,13 +40,13 @@ torch.onnx.export(model = model,args = (x),f=onnx_file_name,
                     'outputs':{0: 'batch',2:'w',3:'h'}
                 })
 # 修改onnx模型
-onnx_model = onnx.load(onnx_file_name)
-graph = gs.import_onnx(onnx_model)
-print('原始节点数:',len(graph.nodes))
-new_node = gs.Node(op='Gelu',name='Gelu_1',inputs=[graph.inputs[0]],outputs=[graph.outputs[0]])
-graph.nodes.append(new_node)
-for node in graph.nodes:
-    if node.name == 'Mul_7':
-        node.outputs.clear()
-graph.cleanup()
-onnx.save(gs.export_onnx(graph),'gelu_surgeon.onnx')
+# onnx_model = onnx.load(onnx_file_name)
+# graph = gs.import_onnx(onnx_model)
+# print('原始节点数:',len(graph.nodes))
+# new_node = gs.Node(op='Gelu',name='Gelu_1',inputs=[graph.inputs[0]],outputs=[graph.outputs[0]])
+# graph.nodes.append(new_node)
+# for node in graph.nodes:
+#     if node.name == 'Mul_7':
+#         node.outputs.clear()
+# graph.cleanup()
+# onnx.save(gs.export_onnx(graph),'gelu_surgeon.onnx')

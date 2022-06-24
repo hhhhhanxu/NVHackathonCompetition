@@ -1,8 +1,10 @@
 import numpy as np
+import sys
+sys.path.append('/root/hx/NVHackathonCompetition/')
 from utils.print_color_txt import colorstr
 
-a = np.load('gelu.npy')
-b = np.load('gelu_surgeon.npy')
+a = np.load('/root/hx/NVHackathonCompetition/gelu.npy')
+b = np.load('/root/hx/NVHackathonCompetition/gelu_LN.npy')
 
 ea = np.reshape(a,(-1))
 print(a.shape)

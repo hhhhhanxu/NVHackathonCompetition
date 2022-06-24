@@ -15,7 +15,7 @@ from cuda import cudart
 import tensorrt as trt
 from collections import OrderedDict
 import cv2
-
+sys.path.append('/root/hx/NVHackathonCompetition/')
 from utils.print_color_txt import colorstr
 
 def reorder_image(img, input_order='HWC'):
@@ -285,7 +285,7 @@ def testTRT():
     parser = argparse.ArgumentParser()
     parser.add_argument("--onnxFile", type=str, default=None,
                         help="onnx file path.")
-    parser.add_argument("--TRTFile", type=str, default="./gelu.plan",
+    parser.add_argument("--TRTFile", type=str, default="/root/hx/NVHackathonCompetition/gelu_LN.plan",
                         help="onnx file path.")
     args = parser.parse_args()
 

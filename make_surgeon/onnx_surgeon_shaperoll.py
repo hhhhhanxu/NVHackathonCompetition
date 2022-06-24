@@ -8,7 +8,8 @@ import sys
 sys.path.append('/root/hx/NVHackathonCompetition/')
 from utils.print_color_txt import colorstr
 
-
+# 一定要先做attn的plugin替换，再换这个，否则会把attn里面的reshape换掉
+# 这里的许多reshape加其他算子在一起，最终目的还是实现一个torch的单纯的reshape或者view操作
 def surgeon(onnx_path):
     # 读取 .onnx 并进行调整
     graph = gs.import_onnx(onnx.load(onnx_path))

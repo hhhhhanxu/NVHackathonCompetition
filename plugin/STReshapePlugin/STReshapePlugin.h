@@ -104,6 +104,7 @@ public:
         const auto* wspow2 = exprBuilder.constant(m.window_size_*m.window_size_);
         
         // B, H, W, C without shift
+        // from N,C,W,H to N,num_win_h,win_size,num_win_w,win_size,C
         if (m.type_ == 0){
             out.nbDims = 6;
             out.d[0]   = inputs[1].d[0];

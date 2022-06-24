@@ -2,10 +2,6 @@
 # SwinIR: Image Restoration Using Swin Transformer, https://arxiv.org/abs/2108.10257
 # Originally Written by Ze Liu, Modified by Jingyun Liang.
 # -----------------------------------------------------------------------------------
-# SwinIR_simplify: A Simplified version of SwinIR , some useless and redundant operations are removed
-# Originally Written by Ze Liu, Modified by Xu Han.
-# 删除了一些没用的%操作，并且把mask的计算提前，极大的降低了导出计算图的节点数
-# -----------------------------------------------------------------------------------
 
 import math
 import torch
@@ -13,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-
+import numpy as np
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -34,7 +30,7 @@ class Mlp(nn.Module):
         return x
 
 
-def window_partition(x, window_size):
+def window_partition(x, window_size, C_=1):
     """
     Args:
         x: (B, H, W, C)
@@ -45,7 +41,7 @@ def window_partition(x, window_size):
     """
     B, H, W, C = x.shape
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C_)
     return windows
 
 
@@ -121,13 +117,12 @@ class WindowAttention(nn.Module):
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
-
+        # print("WindowAttention: ", x.shape)
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-
         q = q * self.scale
-        attn = (q @ k.transpose(-2, -1))  # 矩阵乘法
+        attn = (q @ k.transpose(-2, -1))
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
@@ -136,14 +131,13 @@ class WindowAttention(nn.Module):
 
         if mask is not None:
             nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(B_ // mask.shape[0], mask.shape[0], self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
             attn = self.softmax(attn)
         else:
             attn = self.softmax(attn)
 
         attn = self.attn_drop(attn)
-
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -241,15 +235,15 @@ class SwinTransformerBlock(nn.Module):
 
         return attn_mask
 
-    def forward(self, x, x_size, mask):
+    def forward(self, x, x_size, mask=None):
         H, W = x_size
+        # print("SwinTransformerBlock: ", x.shape)
         B, L, C = x.shape
         # assert L == H * W, "input feature has wrong size"
 
         shortcut = x
         x = self.norm1(x)
-        x = x.view(B, H, W, C) # 重建回来？
-
+        x = x.view(B, H, W, C)
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
@@ -257,19 +251,16 @@ class SwinTransformerBlock(nn.Module):
             shifted_x = x
 
         # partition windows
-        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C 得到若干个窗口
-        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C 每个窗口都展成一个embed
+        x_windows = window_partition(shifted_x, self.window_size, C)  # nW*B, window_size, window_size, C
+        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
-        # W-MSA/SW-MSA (to be compatible for testing on images whose shapes are the multiple of window size
-        # if self.input_resolution == x_size:
-        #     attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
-        # else:
-        attn_windows = self.attn(x_windows, mask=mask)
+        # attn_windows = self.attn(x_windows, mask=mask)
+        attn_windows = x_windows
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
         shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
-
+        
         # reverse cyclic shift
         if self.shift_size > 0:
             x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
@@ -323,6 +314,7 @@ class PatchMerging(nn.Module):
         x: B, H*W, C
         """
         H, W = self.input_resolution
+        # print("PatchMerging: ", x.shape)
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
         assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
@@ -380,12 +372,13 @@ class BasicLayer(nn.Module):
         self.input_resolution = input_resolution
         self.depth = depth
         self.use_checkpoint = use_checkpoint
+        self.window_size = window_size
 
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2, # 等于0的时候就是自己窗口内的attention，不等于0的时候就是shift
+                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
@@ -399,17 +392,16 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x, x_size, mask, shift_mask):
-        for index,blk in enumerate(self.blocks) :
+    def forward(self, x, x_size, mask, mask_shift):
+        for i in range(self.depth): # x_windows
+            blk = self.blocks[i]
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x, x_size)
             else:
-                # 每两个block组成一个基本的Swin Trans Block，第一个算原始的，第二个算shift的
-                if index%2==0:
+                if i % 2 == 0:
                     x = blk(x, x_size, mask)
                 else:
-                    x = blk(x, x_size, shift_mask)
-
+                    x = blk(x, x_size, mask_shift)
         if self.downsample is not None:
             x = self.downsample(x)
         return x
@@ -488,8 +480,8 @@ class RSTB(nn.Module):
             img_size=img_size, patch_size=patch_size, in_chans=0, embed_dim=dim,
             norm_layer=None)
 
-    def forward(self, x, x_size, mask, shift_mask):
-        return self.patch_embed(self.conv(self.patch_unembed(self.residual_group(x, x_size, mask, shift_mask), x_size))) + x
+    def forward(self, x, x_size, mask, mask_shift):
+        return self.patch_embed(self.conv(self.patch_unembed(self.residual_group(x, x_size, mask, mask_shift), x_size))) + x
 
     def flops(self):
         flops = 0
@@ -532,8 +524,7 @@ class PatchEmbed(nn.Module):
             self.norm = None
 
     def forward(self, x):
-        # flatten(start_dim=0,end_dim = -1) -> Tensor
-        x = x.flatten(2).transpose(1, 2)  # B C Pw Ph -> B Ph*Pw C
+        x = x.flatten(2).transpose(1, 2)  # B Ph*Pw C
         if self.norm is not None:
             x = self.norm(x)
         return x
@@ -571,8 +562,9 @@ class PatchUnEmbed(nn.Module):
         self.embed_dim = embed_dim
 
     def forward(self, x, x_size):
+        # print("PatchUnEmbed: ", x.shape)
         B, HW, C = x.shape
-        x = x.transpose(1, 2).view(B, self.embed_dim, x_size[0], x_size[1])  # B Ph*Pw C -> B C Pw Ph
+        x = x.transpose(1, 2).view(B, self.embed_dim, x_size[0], x_size[1])  # B Ph*Pw C
         return x
 
     def flops(self):
@@ -677,7 +669,7 @@ class SwinIR(nn.Module):
 
         #####################################################################################################
         ################################### 1, shallow feature extraction ###################################
-        self.conv_first = nn.Conv2d(num_in_ch, embed_dim, 3, 1, 1)
+        self.conv_first = nn.Conv2d(num_in_ch, embed_dim, 3, 1, 1) # 一个像素一个patch
 
         #####################################################################################################
         ################################### 2, deep feature extraction ######################################
@@ -740,7 +732,7 @@ class SwinIR(nn.Module):
             self.conv_after_body = nn.Conv2d(embed_dim, embed_dim, 3, 1, 1)
         elif resi_connection == '3conv':
             # to save parameters and memory
-            self.conv_after_body = nn.Sequential(nn.Conv2d(embed_dim, embed_dim // 4, 3, 1, 1),  # 这种Sequential写法就不需要像model那样写forward了
+            self.conv_after_body = nn.Sequential(nn.Conv2d(embed_dim, embed_dim // 4, 3, 1, 1),
                                                  nn.LeakyReLU(negative_slope=0.2, inplace=True),
                                                  nn.Conv2d(embed_dim // 4, embed_dim // 4, 1, 1, 0),
                                                  nn.LeakyReLU(negative_slope=0.2, inplace=True),
@@ -793,46 +785,64 @@ class SwinIR(nn.Module):
 
     def check_image_size(self, x):
         _, _, h, w = x.size()
-        mod_pad_h = (self.window_size - h % self.window_size) % self.window_size # 一个恒小于windowsize的数对windowsize取余数，有什么意义么
+        mod_pad_h = (self.window_size - h % self.window_size) % self.window_size
         mod_pad_w = (self.window_size - w % self.window_size) % self.window_size
-        x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h), 'reflect')  # 对输入x进行填充，具体为填充右侧和下侧，目的是将x变成能够被windowssize整除的尺寸
+        x = F.pad(x, (0, mod_pad_w, 0, mod_pad_h), 'reflect')
         return x
 
-    def forward_features(self, x, mask, shift_mask):
+    def calculate_mask(self, x_size, shift_size=0):
+        # calculate attention mask for SW-MSA
+        # 只计算一个，然后重复很多次可以吗？
+        H, W = x_size
+        img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+        h_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -shift_size),
+                    slice(-shift_size, None))
+        w_slices = (slice(0, -self.window_size),
+                    slice(-self.window_size, -shift_size),
+                    slice(-shift_size, None))
+        
+        if shift_size != 0:
+            cnt = 0
+            for h in h_slices:
+                for w in w_slices:
+                    img_mask[:, h, w, :] = cnt
+                    cnt += 1
+
+        mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+        mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+        attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+        attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)) # .masked_fill(attn_mask == 0, float(0.0))
+        return attn_mask
+
+    def forward_features(self, x):
         x_size = (x.shape[2], x.shape[3])
-        x = self.patch_embed(x) # 将patch转成embed
+        mask = self.calculate_mask(x_size).to(x.device)
+        mask_shift = self.calculate_mask(x_size, self.window_size // 2).to(x.device)
+
+        x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
-        x = self.pos_drop(x)  # 这个也有加dropout的必要么
+        x = self.pos_drop(x)
 
         for layer in self.layers:
-            x = layer(x, x_size, mask, shift_mask)
+            x = layer(x, x_size, mask, mask_shift)
 
         x = self.norm(x)  # B L C
-
         x = self.patch_unembed(x, x_size)
-
         return x
 
     def forward(self, x):
-        
-        # 首先完成尺寸确认和对齐
+        # print("SwinIR: ", x.shape)
         _, _, h_old, w_old = x.size()
         h_pad = (h_old // self.window_size + 1) * self.window_size - h_old
         w_pad = (w_old // self.window_size + 1) * self.window_size - w_old
         x = torch.cat([x, torch.flip(x, [2])], 2)[:, :, :h_old + h_pad, :]
         x = torch.cat([x, torch.flip(x, [3])], 3)[:, :, :, :w_old + w_pad]
-        
         H, W = x.shape[2:]
-
-        # x = self.check_image_size(x)  # 填充输入图像的右侧和下侧，使其尺寸为window_size的整数倍
-        # 提前计算好mask
-        mask = self.calculate_mask(x.shape[2:]).to(x.device)
-        shift_mask = self.calculate_mask((x.shape[2:]), shift_size=(self.window_size // 2)).to(x.device)
-
-
+        # x = self.check_image_size(x)
         self.mean = self.mean.type_as(x)
-        x = (x - self.mean) * self.img_range  # 灰度值归一化？
+        x = (x - self.mean) * self.img_range
 
         if self.upsampler == 'pixelshuffle':
             # for classical SR
@@ -842,8 +852,8 @@ class SwinIR(nn.Module):
             x = self.conv_last(self.upsample(x))
         elif self.upsampler == 'pixelshuffledirect':
             # for lightweight SR
-            x = self.conv_first(x)   # 提取浅层权重
-            x = self.conv_after_body(self.forward_features(x,mask,shift_mask)) + x  # forward_features 是RSTB，后面加一个卷积，然后是残差操作
+            x = self.conv_first(x)
+            x = self.conv_after_body(self.forward_features(x)) + x
             x = self.upsample(x)
         elif self.upsampler == 'nearest+conv':
             # for real-world SR
@@ -861,38 +871,7 @@ class SwinIR(nn.Module):
             x = x + self.conv_last(res)
 
         x = x / self.img_range + self.mean
-
         return x[:, :, :H*self.upscale, :W*self.upscale]
-
-
-    def calculate_mask(self, x_size, shift_size=0):
-        # calculate attention mask for SW-MSA
-
-        H, W = x_size
-        img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
-        h_slices = (slice(0, -self.window_size),
-                    slice(-self.window_size, -shift_size),
-                    slice(-shift_size, None))
-        w_slices = (slice(0, -self.window_size),
-                    slice(-self.window_size, -shift_size),
-                    slice(-shift_size, None))
-        cnt = 0
-        for h in h_slices:
-            for w in w_slices:
-                img_mask[:, h, w, :] = cnt
-                # print(img_mask[0])
-                cnt += 1
-
-        mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
-
-        mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
-
-        attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
-
-        attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
-
-        return attn_mask
-
 
     def flops(self):
         flops = 0
@@ -909,23 +888,25 @@ class SwinIR(nn.Module):
 if __name__ == '__main__':
     upscale = 4
     window_size = 8
-    height = 32 * window_size
-    width = 32 * window_size
+    height = (1024 // upscale // window_size + 1) * window_size
+    width = (720 // upscale // window_size + 1) * window_size
+    model = SwinIR(upscale=2, in_chans=3, img_size=64, window_size=8,
+                    img_range=1., depths=[6, 6, 6, 6], embed_dim=60, num_heads=[6, 6, 6, 6],
+                    mlp_ratio=2, upsampler='pixelshuffledirect', resi_connection='1conv')
+    # print(model)
+    # print(height, width, model.flops() / 1e9)
 
-    model = SwinIR(upscale=2, img_size=64,in_chans=3,
-                   window_size=window_size, img_range=1., depths=[6, 6, 6, 6],
-                   embed_dim=60, num_heads=[6, 6, 6, 6], mlp_ratio=2, upsampler='pixelshuffledirect'
-                   ,resi_connection='1conv').cuda()
-    # 加载参数
-    checkpoint = torch.load('SwinIR/model_zoo/002_lightweightSR_DIV2K_s64w8_SwinIR-S_x2.pth')
-    param_key_g = 'params'
+    x = torch.randn((1, 3, 64, 64))
 
-    model.load_state_dict(checkpoint[param_key_g] if param_key_g in checkpoint.keys() else checkpoint)
-
-
-    x = torch.ones((1, 3, height, width)).cuda()
-    x = model(x)
-    print(x.shape)
-    # print('-------------')
-    # print(x)
-    # print(x.shape)
+    torch.onnx.export(model, 
+                    (x), 
+                    "./test.onnx", 
+                    verbose=False,
+                    opset_version=13,
+                    # do_constant_folding=True,
+                    input_names=['images'],
+                    output_names=['output'],
+                    dynamic_axes={'images': {0: 'batch', 2: 'height', 3: 'width'},
+                                'output': {0: 'batch', 2: 'height_out', 3: 'width_out'}
+                                }
+                )

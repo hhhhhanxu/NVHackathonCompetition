@@ -6,7 +6,7 @@ import ctypes
 
 def onnx2trt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--onnxFile", type=str, default="./onnx_zoo/calculate_mask_head_surgeon.onnx",
+    parser.add_argument("--onnxFile", type=str, default="./gelu_LN.onnx",
                         help="onnx file path.")
     parser.add_argument("--trtFile", type=str, default=None,
                         help="onnx file path.")
@@ -38,7 +38,7 @@ def onnx2trt():
     config = builder.create_builder_config()
     config.max_workspace_size = 12 << 30  # 12G
     
-    config.flags = 1 << int(trt.BuilderFlag.FP16) # 开启FP16？
+    # config.flags = 1 << int(trt.BuilderFlag.FP16) # 开启FP16？
 
     profile = builder.create_optimization_profile()
     print("==== inputs name:")

@@ -28,7 +28,7 @@ C = 3
 W = 32 * window_size 
 H = 32 * window_size 
 
-onnx_version = "LayerNorm_ori"
+onnx_version = "SwinIR"
 onnx_file_name = './onnx_zoo/{}.onnx'.format(onnx_version)
 
 x = torch.randn((N,C,W,H), requires_grad=False).cuda()
@@ -38,11 +38,19 @@ torch.onnx.export(model = model,args = (x),f=onnx_file_name,
                 verbose=False,
                 input_names=['imgs'],
                 output_names=['outputs'],
+                # dynamic_axes={
+                #     'imgs':{0: 'batch', 2: 'height', 3: 'width'},
+                #     'outputs':{0: 'batch', 2: 'height', 3: 'width'},
+                #     'mask':{0: 'batch'},
+                #     'shift_mask':{0: 'batch'},
+                # }
                 dynamic_axes={
                     'imgs':{0: 'batch', 2: 'height', 3: 'width'},
+                    # 'outputs':{0: 'batch'}
                     'outputs':{0: 'batch', 2: 'height', 3: 'width'}
-                })
-# 大概吃9个G
+                }
+                )
+# 吃9669M
 model = onnx.load(onnx_file_name)
 graph = gs.import_onnx(model)
 
